@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kairós | Hábitos Digitales y Fatiga Cognitiva</title>
+    <meta name="description" content="Kairós: plataforma para medir tu fatiga cognitiva con IA y Machine Learning, mantener tu racha y descansar sin culpa.">
+
+    <!-- Tipografía e iconos -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Chart.js para gráficas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar" id="sidebar">
+    <div class="brand">
+        <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+        <div><strong>Kairós</strong><small>Bienestar digital estudiantil</small></div>
+    </div>
+
+    <nav class="nav">
+        <span class="nav-label">General</span>
+        <button class="nav-item" data-section="inicio"><i class="fa-solid fa-house"></i>Inicio</button>
+        <button class="nav-item" data-section="dashboard"><i class="fa-solid fa-chart-column"></i>Dashboard</button>
+
+        <span class="nav-label">Mi bienestar</span>
+        <button class="nav-item" data-section="racha"><i class="fa-solid fa-fire"></i>Mi racha <span class="nav-pill" id="nav-racha">5</span></button>
+        <button class="nav-item" data-section="habitos"><i class="fa-solid fa-seedling"></i>Hábitos</button>
+        <button class="nav-item" data-section="amigos"><i class="fa-solid fa-trophy"></i>Amigos y retos</button>
+
+        <span class="nav-label">Tecnología</span>
+        <button class="nav-item" data-section="ia"><i class="fa-solid fa-brain"></i>IA aplicada</button>
+        <button class="nav-item" data-section="cloud"><i class="fa-solid fa-cloud"></i>Arquitectura cloud</button>
+    </nav>
+
+    <div class="sidebar-card">
+        <i class="fa-solid fa-mug-hot"></i>
+        <p><strong>Descansar también es avanzar.</strong> Tu check-in diario toma menos de un minuto.</p>
+        <button class="btn btn-light btn-sm" data-go="racha">Hacer check-in</button>
+    </div>
+</aside>
+<div class="overlay" id="overlay"></div>
+
+<div class="shell">
+    <!-- ============ TOPBAR ============ -->
+    <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="Abrir menú"><i class="fa-solid fa-bars"></i></button>
+        <div class="topbar-title">
+            <h1 id="page-title">Inicio</h1>
+            <span id="page-sub">Bienvenida a Kairós</span>
+        </div>
+        <div class="topbar-actions">
+            <span class="chip chip-fire" id="top-racha" data-go="racha"><i class="fa-solid fa-fire"></i> <b>5</b> días</span>
+            <span class="chip chip-xp"><i class="fa-solid fa-bolt"></i> <b id="top-xp">340</b> XP</span>
+            <div class="avatar" title="Usuario de demostración">AN</div>
+        </div>
+    </header>
+
+    <main class="content">
+
+        <!-- ============ INICIO ============ -->
+        <section class="section" id="inicio" data-title="Inicio" data-sub="Bienvenida a Kairós">
+            <div class="hero">
+                <div class="hero-text">
+                    <span class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> MVP · Data, Machine Learning e IA</span>
+                    <h2 class="hero-title">Descansa sin culpa.<br><span class="grad">Estudia con enfoque.</span></h2>
+                    <p class="hero-lead">Kairós mide tu fatiga cognitiva con un check-in diario guiado por IA, estima tu riesgo de desgaste con Machine Learning y te dice cuándo y cómo descansar.</p>
+                    <div class="hero-cta">
+                        <button class="btn btn-fire btn-lg" data-go="racha"><i class="fa-solid fa-fire"></i> Comenzar mi check-in</button>
+                        <button class="btn btn-ghost btn-lg" data-go="dashboard"><i class="fa-solid fa-chart-column"></i> Ver dashboard</button>
+                    </div>
+                    <div class="hero-stats">
+                        <div><b data-count="7.4" data-dec="1" data-suffix=" h">0</b><span>de pantalla al día</span></div>
+                        <div><b data-count="68" data-suffix="%">0</b><span>reporta fatiga en finales</span></div>
+                        <div><b data-count="1240">0</b><span>rachas activas</span></div>
+                    </div>
+                    <small class="muted">Cifras simuladas para el prototipo.</small>
+                </div>
+
+                <!-- Vista previa decorativa de la app -->
+                <div class="hero-visual" aria-hidden="true">
+                    <div class="mock-card mock-main">
+                        <div class="mock-head">
+                            <span class="flame"><i class="fa-solid fa-fire"></i></span>
+                            <div><b>5 días</b><small>de racha</small></div>
+                        </div>
+                        <div class="mock-week">
+                            <span class="on">L</span><span class="on">M</span><span class="on">M</span><span class="on">J</span><span class="on">V</span><span>S</span><span>D</span>
+                        </div>
+                        <div class="mock-gauge">
+                            <div class="gauge sm" style="--val:42;--c:var(--amber)"><span>42</span></div>
+                            <div><b>Desgaste moderado</b><small>Toma 15 min de pausa</small></div>
+                        </div>
+                    </div>
+                    <div class="mock-card mock-float f1"><i class="fa-solid fa-robot"></i> ¿Dormiste bien anoche?</div>
+                    <div class="mock-card mock-float f2"><i class="fa-solid fa-plane"></i> Modo avión 20 min</div>
+                </div>
+            </div>
+
+            <div class="grid-3">
+                <article class="panel feature lift">
+                    <span class="ic ic-red"><i class="fa-solid fa-brain"></i></span>
+                    <h3>El problema</h3>
+                    <p>Durante el semestre, y sobre todo en finales, el uso excesivo de pantallas y la sobrecarga de trabajo generan fatiga cognitiva, estrés, mal sueño y procrastinación.</p>
+                </article>
+                <article class="panel feature lift">
+                    <span class="ic ic-blue"><i class="fa-solid fa-robot"></i></span>
+                    <h3>La solución</h3>
+                    <p>Un agente de IA te hace preguntas breves cada día y un modelo de ML estima tu nivel de desgaste para recomendarte cuándo y cómo descansar.</p>
+                </article>
+                <article class="panel feature lift">
+                    <span class="ic ic-green"><i class="fa-solid fa-people-group"></i></span>
+                    <h3>El impacto</h3>
+                    <p>Rachas y retos entre amigos crean el hábito; los datos anónimos ayudan a escuelas y familias a detectar a tiempo las semanas críticas.</p>
+                </article>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head"><h3>¿Cómo funciona?</h3><span class="badge badge-green"><i class="fa-solid fa-clock"></i> 1 minuto al día</span></div>
+                <div class="steps">
+                    <div class="step"><span class="step-n">1</span><i class="fa-solid fa-comments"></i><b>Check-in con IA</b><p>Respondes 7 preguntas sobre pantalla, sueño, pausas y síntomas.</p></div>
+                    <div class="step"><span class="step-n">2</span><i class="fa-solid fa-microchip"></i><b>Modelo de ML</b><p>Estima tu probabilidad de desgaste y riesgos asociados.</p></div>
+                    <div class="step"><span class="step-n">3</span><i class="fa-solid fa-seedling"></i><b>Hábitos a tu medida</b><p>Qué hacer para bajar tu cortisol y qué evitar.</p></div>
+                    <div class="step"><span class="step-n">4</span><i class="fa-solid fa-fire"></i><b>Racha y retos</b><p>Mantén la constancia y compite sanamente con tus amigos.</p></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3 class="section-title">Pensado para</h3>
+                <div class="audience">
+                    <span class="chip"><i class="fa-solid fa-school"></i> Escuelas</span>
+                    <span class="chip"><i class="fa-solid fa-house-chimney-user"></i> Familias</span>
+                    <span class="chip"><i class="fa-solid fa-user-tie"></i> Coordinadores escolares</span>
+                    <span class="chip"><i class="fa-solid fa-landmark"></i> Municipios y autoridades educativas</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ DASHBOARD ============ -->
+        <section class="section" id="dashboard" data-title="Dashboard comunitario" data-sub="Datos anónimos y agregados de estudiantes">
+            <div class="panel filters">
+                <div class="filter">
+                    <label>Periodo</label>
+                    <div class="segmented" id="f-periodo">
+                        <button class="active" data-v="semana">Semana</button>
+                        <button data-v="mes">Mes</button>
+                        <button data-v="finales">Finales</button>
+                    </div>
+                </div>
+                <div class="filter"><label for="f-carrera">Carrera</label><select id="f-carrera"></select></div>
+                <div class="filter">
+                    <label for="f-semestre">Semestre</label>
+                    <select id="f-semestre">
+                        <option value="todos">Todos</option>
+                        <option value="1-2">1.º – 2.º</option>
+                        <option value="3-4">3.º – 4.º</option>
+                        <option value="5-6">5.º – 6.º</option>
+                        <option value="7-9">7.º – 9.º</option>
+                    </select>
+                </div>
+                <span class="badge badge-blue"><i class="fa-solid fa-user-shield"></i> 100% anónimo</span>
+            </div>
+
+            <div class="kpi-grid" id="kpis"></div>
+
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="panel-head"><h3>Fatiga cognitiva por hora del día</h3><span class="muted small">Escala 1–10</span></div>
+                    <div class="chart-wrap"><canvas id="chart-fatiga"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h3>Principales distractores digitales</h3><span class="muted small">% del tiempo de pantalla</span></div>
+                    <div class="chart-wrap"><canvas id="chart-distractores"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h3>Comparación de respuestas</h3><select id="f-pregunta" class="select-sm"></select></div>
+                    <div class="chart-wrap"><canvas id="chart-respuestas"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h3>Hábitos digitales</h3><span class="muted small">% de estudiantes que cumple</span></div>
+                    <div class="chart-wrap"><canvas id="chart-habitos"></canvas></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>Muestra anónima de registros</h3>
+                    <span class="badge"><i class="fa-solid fa-fingerprint"></i> IDs cifrados</span>
+                </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th>ID anónimo</th><th>Carrera</th><th>Semestre</th><th>Fatiga</th><th>Pantalla</th><th>Sueño</th><th>Racha</th><th>Riesgo</th></tr></thead>
+                        <tbody id="tabla-anon"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ MI RACHA + AGENTE IA ============ -->
+        <section class="section" id="racha" data-title="Mi racha" data-sub="Tu check-in diario de fatiga cognitiva">
+            <div class="streak-grid">
+                <div class="panel streak-card">
+                    <div class="streak-top">
+                        <div class="flame-big"><i class="fa-solid fa-fire"></i></div>
+                        <div>
+                            <span class="streak-num" id="racha-num">5</span>
+                            <span class="streak-lbl">días de racha</span>
+                        </div>
+                    </div>
+                    <div class="week" id="week"></div>
+                    <div class="xp">
+                        <div class="xp-head"><span>Nivel <b id="nivel">2</b></span><span id="xp-txt">140/200 XP</span></div>
+                        <div class="bar"><div class="bar-fill" id="xp-bar"></div></div>
+                    </div>
+                    <button class="btn btn-fire btn-lg btn-block" id="btn-checkin"><i class="fa-solid fa-robot"></i> Hacer mi check-in de hoy</button>
+                    <p class="small muted" id="checkin-estado"></p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h3>Insignias</h3><span class="muted small">Desbloquéalas con constancia</span></div>
+                    <div class="badges" id="insignias"></div>
+                </div>
+            </div>
+
+            <div class="panel agent" id="agent">
+                <div class="agent-head">
+                    <div class="agent-id">
+                        <span class="bot-avatar"><i class="fa-solid fa-robot"></i></span>
+                        <div><b>Kairós IA</b><small><span class="dot-live"></span> Agente de check-in · Gemini (simulado)</small></div>
+                    </div>
+                    <div class="agent-progress"><span id="agent-step">0/7</span><div class="bar"><div class="bar-fill" id="agent-bar"></div></div></div>
+                </div>
+                <div class="chat" id="chat">
+                    <div class="chat-empty">
+                        <i class="fa-solid fa-comments"></i>
+                        <p>Presiona <b>“Hacer mi check-in de hoy”</b> para que Kairós IA te haga unas preguntas rápidas.</p>
+                    </div>
+                </div>
+                <div class="quick" id="quick"></div>
+                <form class="chat-input" id="chat-form">
+                    <input class="input" id="chat-input" type="text" placeholder="Inicia el check-in para escribir…" autocomplete="off" disabled>
+                    <button class="btn btn-primary" id="chat-send" type="submit" disabled aria-label="Enviar"><i class="fa-solid fa-paper-plane"></i></button>
+                </form>
+            </div>
+
+            <!-- Resultado del modelo (se llena desde JS) -->
+            <div class="hidden" id="resultado"></div>
+        </section>
+
+        <!-- ============ HÁBITOS ============ -->
+        <section class="section" id="habitos" data-title="Hábitos recomendados" data-sub="Qué hacer y qué evitar según tu check-in">
+            <div class="panel notice" id="habitos-aviso"></div>
+            <div class="grid-2">
+                <div>
+                    <h3 class="col-title good"><i class="fa-solid fa-circle-check"></i> Hábitos para bajar tu cortisol</h3>
+                    <div class="habit-list" id="habitos-hacer"></div>
+                </div>
+                <div>
+                    <h3 class="col-title bad"><i class="fa-solid fa-ban"></i> Hábitos digitales a evitar</h3>
+                    <div class="habit-list" id="habitos-evitar"></div>
+                </div>
+            </div>
+            <div class="panel" id="plan"></div>
+        </section>
+
+        <!-- ============ AMIGOS Y RETOS ============ -->
+        <section class="section" id="amigos" data-title="Amigos y retos" data-sub="Compite sanamente y motívense entre todos">
+            <div class="grid-main-side">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h3>Tabla de posiciones</h3>
+                        <div class="segmented" id="lb-metrica">
+                            <button class="active" data-v="racha">Racha</button>
+                            <button data-v="tareas">Tareas</button>
+                            <button data-v="descansos">Descansos</button>
+                            <button data-v="sinPantalla">Sin pantalla</button>
+                        </div>
+                    </div>
+                    <ol class="leaderboard" id="leaderboard"></ol>
+                </div>
+
+                <div class="side-stack">
+                    <div class="panel">
+                        <h3>Registrar actividad</h3>
+                        <p class="small muted">Cada registro suma XP y te mueve en la tabla.</p>
+                        <div class="actions">
+                            <button class="btn btn-soft" id="add-tarea"><i class="fa-solid fa-check-double"></i> Tarea terminada</button>
+                            <button class="btn btn-soft" id="add-descanso"><i class="fa-solid fa-mug-hot"></i> Descanso tomado</button>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <h3>Invitar amigos</h3>
+                        <form class="invite-form" id="invite-form">
+                            <input class="input" id="invite-input" type="text" placeholder="Usuario o correo" autocomplete="off">
+                            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-user-plus"></i></button>
+                        </form>
+                        <button class="btn btn-ghost btn-sm btn-block" id="copy-link"><i class="fa-solid fa-link"></i> Copiar enlace de invitación</button>
+                        <ul class="pending" id="pendientes"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head"><h3>Retos de la semana</h3><span class="muted small">Se reinician cada lunes</span></div>
+                <div class="grid-3" id="retos"></div>
+            </div>
+        </section>
+
+        <!-- ============ IA APLICADA ============ -->
+        <section class="section" id="ia" data-title="IA aplicada" data-sub="Cómo Kairós usa NLP, Machine Learning y datos">
+            <div class="pipeline" id="pipeline"></div>
+
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="panel-head"><h3>Peso de cada variable en el modelo</h3><span class="badge badge-blue">Regresión logística</span></div>
+                    <div class="chart-wrap"><canvas id="chart-pesos"></canvas></div>
+                    <p class="small muted">Rojo: aumenta la probabilidad de desgaste. Verde: protege. Coeficientes estandarizados (simulados).</p>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><h3>Prueba el extractor de síntomas (NLP)</h3><span class="badge">Simula a Gemini</span></div>
+                    <textarea class="input" id="nlp-input">Llevo dos noches desvelándome por los exámenes, me arden los ojos y no me puedo concentrar.</textarea>
+                    <button class="btn btn-primary" id="nlp-btn" style="margin-top:.8rem"><i class="fa-solid fa-magnifying-glass"></i> Analizar texto</button>
+                    <div id="nlp-out" class="nlp-out"></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head"><h3>El modelo, en una línea</h3><span class="muted small">Archivo: js/ml.js</span></div>
+<pre class="code"><span class="c">// Probabilidad de desgaste (burnout) = sigmoide de una combinación lineal de variables</span>
+<span class="k">z</span> = −4.5 + <span class="n">0.28</span>·pantalla − <span class="n">0.55</span>·(sueño − 7) − <span class="n">0.45</span>·pausas
+      + <span class="n">0.55</span>·síntomas + <span class="n">0.45</span>·carga + <span class="n">0.22</span>·redes + <span class="n">0.3</span>·señalesNLP
+<span class="k">p</span>(burnout) = 1 / (1 + e<sup>−z</sup>)</pre>
+                <p class="small muted" style="margin-top:.8rem">En producción, los pesos se aprenden con datos reales (encuesta + check-ins) y el modelo se sirve desde un endpoint de Vertex AI.</p>
+            </div>
+        </section>
+
+        <!-- ============ ARQUITECTURA CLOUD ============ -->
+        <section class="section" id="cloud" data-title="Arquitectura cloud" data-sub="Infraestructura propuesta con Google Cloud">
+            <div class="legend">
+                <span><i class="dot mvp"></i> Activo en el MVP (Vercel · Supabase · GitHub)</span>
+                <span><i class="dot gcp"></i> Propuesto en Google Cloud</span>
+                <span class="muted"><i class="fa-solid fa-hand-pointer"></i> Haz clic en un servicio para ver detalles</span>
+            </div>
+            <div class="panel">
+                <div class="arch" id="arch"></div>
+                <div class="cross-wrap">
+                    <span class="layer-title">Servicios transversales</span>
+                    <div class="cross" id="arch-cross"></div>
+                </div>
+            </div>
+            <div class="grid-2">
+                <div class="panel" id="arch-detalle"></div>
+                <div class="panel">
+                    <h3 class="section-title">Flujo de un check-in</h3>
+                    <ol class="flow" id="flow"></ol>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ============ FOOTER ============ -->
+    <footer class="footer">
+        <div class="footer-brand">
+            <span class="brand-mark sm"><i class="fa-solid fa-leaf"></i></span>
+            <div><b>Kairós</b> © 2026 · Proyecto MVP para Data, ML e IA<br><span>Diseñado para el bienestar estudiantil. No sustituye atención médica o psicológica.</span></div>
+        </div>
+        <div class="footer-links">
+            <span><i class="fa-brands fa-github"></i> GitHub</span>
+            <span><i class="fa-solid fa-database"></i> Supabase</span>
+            <span><i class="fa-solid fa-rocket"></i> Vercel</span>
+            <button class="link-btn" id="reset-demo"><i class="fa-solid fa-rotate-left"></i> Reiniciar demo</button>
+        </div>
+    </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Scripts (el orden importa) -->
+<script src="js/data.js"></script>
+<script src="js/ml.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
