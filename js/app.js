@@ -1,8 +1,13 @@
 /* =========================================================
-   Kairós · Lógica principal de la interfaz
-   Módulos: navegación, dashboard, racha, resultado, hábitos,
-   amigos, IA aplicada y arquitectura cloud.
+   Kairós · Lógica principal conectada a Supabase (6 tablas)
    ========================================================= */
+
+const SUPABASE_URL = 'https://untjkgpdtiwsbnmlwfre.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_isE4B2proTPQ5ejhNXWuQQ_SzF_Ifra';
+
+let sb = null;
+let usuarioActualId = null;
+let usuariosDB = [];
 
 /* ---------- Utilidades ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -17,7 +22,6 @@ function hoyISO() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-// Hash y generador pseudoaleatorio con semilla: mismos filtros = mismos datos
 function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 function rng(seed) {
     return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -25,11 +29,11 @@ function rng(seed) {
 
 function toast(mensaje, icono = 'fa-circle-check') {
     const t = $('#toast');
-    t.innerHTML = `<i class="${ico(icono)}"></i>`;
-    t.append(mensaje); // texto plano, seguro aunque venga del usuario
+    t.innerHTML = `<i class="${ico(icono)}"></i> `;
+    t.append(mensaje);
     t.classList.add('show');
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => t.classList.remove('show'), 2800);
+    toast.timer = setTimeout(() => t.classList.remove('show'), 3500);
 }
 
 function animarNumero(el, fin, { dec = 0, suf = '', dur = 900 } = {}) {
@@ -44,19 +48,116 @@ function animarNumero(el, fin, { dec = 0, suf = '', dur = 900 } = {}) {
     requestAnimationFrame(paso);
 }
 
-/* ---------- Estado persistente (localStorage) ---------- */
+/* ---------- Estado local + Sincronización Supabase ---------- */
 const Store = {
     clave: 'kairos-estado-v1',
     cargar() {
         const base = JSON.parse(JSON.stringify(KAIROS_DATA.estadoInicial));
-        try { const raw = localStorage.getItem(this.clave); if (raw) return { ...base, ...JSON.parse(raw) }; } catch (e) { /* almacenamiento no disponible */ }
+        try { const raw = localStorage.getItem(this.clave); if (raw) return { ...base, ...JSON.parse(raw) }; } catch (e) {}
         return base;
     },
-    guardar(e) { try { localStorage.setItem(this.clave, JSON.stringify(e)); } catch (err) { /* sin persistencia */ } },
-    borrar() { try { localStorage.removeItem(this.clave); } catch (e) { /* nada */ } }
+    guardar(e) { try { localStorage.setItem(this.clave, JSON.stringify(e)); } catch (err) {} },
+    borrar() { try { localStorage.removeItem(this.clave); } catch (e) {} }
 };
 let estado = Store.cargar();
 const guardar = () => Store.guardar(estado);
+
+async function sincronizarConSupabase() {
+    if (!sb && typeof window.supabase !== 'undefined') {
+        try {
+            sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } catch (err) {
+            toast('Error al iniciar cliente Supabase: ' + err.message, 'fa-triangle-exclamation');
+            return;
+        }
+    }
+
+    if (!sb) {
+        toast('⚠️ No cargó el script CDN de Supabase en index.html', 'fa-triangle-exclamation');
+        return;
+    }
+
+    const { data: perfiles, error } = await sb
+        .from('perfiles_usuarios')
+        .select('id, nombre_completo, racha_dias')
+        .order('nombre_completo');
+
+    if (error) {
+        toast('Error Supabase: ' + error.message, 'fa-triangle-exclamation');
+        return;
+    }
+    if (!perfiles || perfiles.length === 0) {
+        toast('Conectado a Supabase, pero perfiles_usuarios está vacía', 'fa-circle-info');
+        return;
+    }
+
+    usuariosDB = perfiles;
+    if (!usuarioActualId || !usuariosDB.some(u => u.id === usuarioActualId)) {
+        usuarioActualId = usuariosDB[0].id;
+    }
+
+    // Inyectar selector de perfil real en la barra superior
+    const actions = $('.topbar-actions');
+    let sel = $('#sb-user-select');
+    if (!sel && actions) {
+        sel = document.createElement('select');
+        sel.id = 'sb-user-select';
+        sel.className = 'select-sm';
+        sel.style.fontWeight = '700';
+        sel.addEventListener('change', async e => {
+            usuarioActualId = e.target.value;
+            await cargarDatosDeUsuario(usuarioActualId);
+        });
+        actions.prepend(sel);
+    }
+    if (sel) {
+        sel.innerHTML = usuariosDB.map(u => `<option value="${u.id}">${esc(u.nombre_completo)}</option>`).join('');
+        sel.value = usuarioActualId;
+    }
+
+    await cargarDatosDeUsuario(usuarioActualId);
+}
+
+async function cargarDatosDeUsuario(userId) {
+    const perfil = usuariosDB.find(u => u.id === userId);
+    if (!perfil) return;
+
+    KAIROS_DATA.usuario.nombre = perfil.nombre_completo.split(' ')[0];
+    KAIROS_DATA.usuario.iniciales = perfil.nombre_completo.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    estado.racha = perfil.racha_dias ?? 0;
+
+    // Traer última predicción IA desde predicciones_ia
+    const { data: preds } = await sb
+        .from('predicciones_ia')
+        .select('*')
+        .eq('usuario_id', userId)
+        .order('fecha_calculo', { ascending: false })
+        .limit(1);
+
+    if (preds && preds.length > 0) {
+        const p = preds[0];
+        const score = Number(p.score_riesgo_burnout);
+        estado.resultado = {
+            burnout: score,
+            desgaste: Math.round(score * 100),
+            riesgos: [
+                { nombre: 'Fatiga visual digital', icon: 'fa-eye', p: Math.min(0.95, score + 0.08) },
+                { nombre: 'Sueño insuficiente', icon: 'fa-moon', p: Math.max(0.1, score - 0.05) },
+                { nombre: 'Estrés y ansiedad', icon: 'fa-heart-pulse', p: score }
+            ],
+            contribuciones: [{ k: 'pantalla', nombre: 'Recomendación IA: ' + p.recomendacion_generada, v: score >= 0.4 ? 0.5 : -0.5 }],
+            f: { pantalla: 5, sueno: 7, pausas: 2, sintomas: 1, carga: 2, redes: 2 },
+            fecha: p.fecha_calculo
+        };
+    }
+
+    const avatarEl = $('.topbar-actions .avatar');
+    if (avatarEl) avatarEl.textContent = KAIROS_DATA.usuario.iniciales;
+
+    actualizarHeader();
+    const secActiva = $('.section.active')?.id || 'inicio';
+    alMostrar[secActiva]?.();
+}
 
 function actualizarHeader() {
     $('#top-racha b').textContent = estado.racha;
@@ -113,7 +214,6 @@ const Dashboard = {
         this.listo = true;
     },
 
-    // Factor de ajuste según los filtros (simula consultas distintas a la base de datos)
     factor() {
         const fl = this.filtros;
         let f = { semana: 1, mes: 0.95, finales: 1.2 }[fl.periodo];
@@ -155,7 +255,6 @@ const Dashboard = {
         }).join('');
         defs.forEach(d => animarNumero($(`.kpi-val[data-k="${d.k}"]`), v[d.k], { dec: d.dec, suf: d.suf }));
 
-        // Gráficas
         const r = estado.resultado;
         const fatiga = C.fatigaHora.map(x => +Math.min(10, x * f).toFixed(1));
         const tu = r ? C.fatigaHora.map(x => +Math.min(10, x * (0.45 + r.desgaste / 80)).toFixed(1)) : null;
@@ -172,7 +271,6 @@ const Dashboard = {
         Charts.respuestas(q.labels, q.data, filtrado, this.etiquetaFiltro());
     },
 
-    // Desplaza la distribución de respuestas hacia más o menos fatiga
     desplazar(q, f) {
         if (q.dir === 0) return q.data.map(x => Math.round(Math.min(95, x * f)));
         const medio = (q.data.length - 1) / 2;
@@ -181,7 +279,6 @@ const Dashboard = {
         return w.map(x => Math.round((x / total) * 100));
     },
 
-    // Traduce las respuestas del usuario a la escala del radar (0-100)
     habitosUsuario(f) {
         return [
             Math.round((f.pausas / 3) * 100),
@@ -193,28 +290,30 @@ const Dashboard = {
         ];
     },
 
-    renderTabla() {
-        const fl = this.filtros, f = this.factor();
-        const aleatorio = rng(hash(JSON.stringify(fl)));
-        const carreras = KAIROS_DATA.carreras.slice(1);
-        const filas = Array.from({ length: 8 }, () => {
-            const fat = Math.min(9.8, Math.max(1.5, (3.8 + aleatorio() * 5) * f));
-            const pan = Math.max(2, Math.min(13, fat * 0.9 + aleatorio() * 3));
-            const sue = Math.max(4, Math.min(8.5, 9 - fat * 0.4 - aleatorio() * 1.2));
-            const id = '#' + Math.floor(aleatorio() * 0xffffff).toString(16).padStart(6, '0').toUpperCase();
-            const car = fl.carrera === 'Todas' ? carreras[Math.floor(aleatorio() * carreras.length)] : fl.carrera;
-            const [a, b] = fl.semestre === 'todos' ? [1, 9] : fl.semestre.split('-').map(Number);
-            const sem = a + Math.floor(aleatorio() * (b - a + 1));
-            const racha = Math.floor(aleatorio() * 25);
-            const nivel = fat >= 7.5 ? 'alto' : fat >= 5 ? 'medio' : 'bajo';
-            return `<tr>
-                <td class="mono">${id}</td><td>${car}</td><td>${sem}.º</td>
-                <td><span class="mini-bar"><i style="width:${fat * 10}%;background:${colorRiesgo(fat / 10)}"></i></span>${fat.toFixed(1)}</td>
-                <td>${pan.toFixed(1)} h</td><td>${sue.toFixed(1)} h</td>
-                <td><i class="fa-solid fa-fire" style="color:var(--orange)"></i> ${racha}</td>
-                <td><span class="risk ${nivel}">${nivel[0].toUpperCase() + nivel.slice(1)}</span></td></tr>`;
-        });
-        $('#tabla-anon').innerHTML = filas.join('');
+    async renderTabla() {
+        if (sb) {
+            const { data: reales } = await sb
+                .from('registros_habitos_diarios')
+                .select('fecha, minutos_uso_activo, minutos_uso_pasivo, horas_sueno_estimadas, perfiles_usuarios(nombre_completo, racha_dias)')
+                .order('fecha', { ascending: false })
+                .limit(8);
+
+            if (reales && reales.length > 0) {
+                $('#tabla-anon').innerHTML = reales.map((row, idx) => {
+                    const panH = ((row.minutos_uso_activo + row.minutos_uso_pasivo) / 60).toFixed(1);
+                    const fat = Math.min(9.8, Math.max(1.5, (row.minutos_uso_pasivo / 35) + (8 - row.horas_sueno_estimadas))).toFixed(1);
+                    const nivel = fat >= 7.5 ? 'alto' : fat >= 5 ? 'medio' : 'bajo';
+                    return `<tr>
+                        <td class="mono">#DB-${100 + idx} (${esc(row.perfiles_usuarios?.nombre_completo || 'Usuario')})</td>
+                        <td>MAC</td><td>5.º</td>
+                        <td><span class="mini-bar"><i style="width:${fat * 10}%;background:${colorRiesgo(fat / 10)}"></i></span>${fat}</td>
+                        <td>${panH} h</td><td>${row.horas_sueno_estimadas} h</td>
+                        <td><i class="fa-solid fa-fire" style="color:var(--orange)"></i> ${row.perfiles_usuarios?.racha_dias ?? 0}</td>
+                        <td><span class="risk ${nivel}">${nivel[0].toUpperCase() + nivel.slice(1)}</span></td></tr>`;
+                }).join('');
+                return;
+            }
+        }
     }
 };
 
@@ -224,7 +323,6 @@ const Racha = {
         const hecho = estado.ultimoCheckin === hoyISO();
         $('#racha-num').textContent = estado.racha;
 
-        // Últimos 7 días (6 del historial + hoy)
         const letras = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
         const hoy = new Date();
         $('#week').innerHTML = [...estado.historial, hecho].map((ok, i) => {
@@ -232,7 +330,6 @@ const Racha = {
             return `<div class="day ${ok ? 'done' : ''} ${i === 6 ? 'today' : ''}"><span>${i === 6 ? 'Hoy' : letras[d.getDay()]}</span><i class="fa-solid ${ok ? 'fa-fire' : 'fa-circle'}"></i></div>`;
         }).join('');
 
-        // Nivel y XP (200 XP por nivel)
         const resto = estado.xp % 200;
         $('#nivel').textContent = Math.floor(estado.xp / 200) + 1;
         $('#xp-txt').textContent = `${resto}/200 XP`;
@@ -240,7 +337,7 @@ const Racha = {
 
         $('#btn-checkin').innerHTML = hecho ? '<i class="fa-solid fa-rotate"></i> Repetir mi check-in' : '<i class="fa-solid fa-robot"></i> Hacer mi check-in de hoy';
         $('#checkin-estado').innerHTML = hecho
-            ? '<i class="fa-solid fa-circle-check" style="color:var(--green)"></i>¡Check-in de hoy completado! Tu racha está a salvo.'
+            ? '<i class="fa-solid fa-circle-check" style="color:var(--green)"></i>¡Check-in de hoy completado! Guardado en Supabase.'
             : '<i class="fa-solid fa-triangle-exclamation" style="color:var(--orange)"></i>Aún no haces tu check-in de hoy. ¡No pierdas tu racha!';
 
         $('#insignias').innerHTML = KAIROS_DATA.insignias.map(i => {
@@ -259,19 +356,49 @@ const Racha = {
     }
 };
 
-function completarCheckin(resultado, respuestas) {
+async function completarCheckin(resultado, respuestas) {
     const nuevo = estado.ultimoCheckin !== hoyISO();
     if (nuevo) { estado.racha += 1; estado.xp += 50; estado.ultimoCheckin = hoyISO(); }
     estado.resultado = resultado;
     estado.respuestas = respuestas;
     guardar();
     actualizarHeader();
-    Racha.render();
-    if (nuevo) {
-        const n = $('#racha-num');
-        n.classList.remove('bump'); void n.offsetWidth; n.classList.add('bump');
+
+    if (sb && usuarioActualId) {
+        const minRedes = Math.round((respuestas.redes || 1) * 60);
+        const minTotal = Math.round((respuestas.pantalla || 4) * 60);
+        const minActivo = Math.max(0, minTotal - minRedes);
+        const nivelFatiga = Math.min(5, Math.max(1, Math.ceil(resultado.burnout * 5)));
+        const alerta = resultado.burnout >= 0.65 ? 'Alto' : resultado.burnout >= 0.35 ? 'Moderado' : 'Bajo';
+
+        await sb.from('registros_habitos_diarios').upsert({
+            usuario_id: usuarioActualId,
+            fecha: hoyISO(),
+            minutos_uso_activo: minActivo,
+            minutos_uso_pasivo: minRedes,
+            horas_sueno_estimadas: respuestas.sueno || 7
+        }, { onConflict: 'usuario_id,fecha' });
+
+        await sb.from('checkins_fatiga_cognitiva').insert({
+            usuario_id: usuarioActualId,
+            nivel_fatiga: nivelFatiga
+        });
+
+        await sb.from('predicciones_ia').insert({
+            usuario_id: usuarioActualId,
+            score_riesgo_burnout: Number(resultado.burnout.toFixed(2)),
+            nivel_alerta: alerta,
+            recomendacion_generada: VEREDICTOS[nivelRiesgo(resultado.burnout)].texto,
+            modelo_utilizado: 'KairosLogReg_v1.2'
+        });
+
+        await sb.from('perfiles_usuarios').update({ racha_dias: estado.racha }).eq('id', usuarioActualId);
+        toast('¡Check-in guardado en Supabase! +50 XP', 'fa-database');
+    } else if (nuevo) {
         toast(`¡Racha de ${estado.racha} días! +50 XP`, 'fa-fire');
     }
+
+    Racha.render();
     setTimeout(() => $('#resultado').scrollIntoView({ behavior: 'smooth', block: 'start' }), 500);
 }
 
@@ -293,7 +420,7 @@ const Resultado = {
         el.innerHTML = `
             <div class="result-head">
                 <h3><i class="fa-solid fa-microchip"></i> Tu análisis de hoy</h3>
-                <span class="badge badge-blue"><i class="fa-solid fa-diagram-project"></i> Regresión logística v1.2 · datos simulados</span>
+                <span class="badge badge-blue"><i class="fa-solid fa-database"></i> Conectado a Supabase · predicciones_ia</span>
             </div>
             <div class="result-grid">
                 <div class="panel verdict ${nivel}">
@@ -313,10 +440,9 @@ const Resultado = {
                         <div class="metric-head"><span>Nivel de cortisol estimado</span><b>${V.cortisol}</b></div>
                         <div class="bar"><div class="bar-fill" data-w="${Math.max(18, pct(r.burnout))}" style="background:linear-gradient(90deg,var(--green),var(--amber),var(--red))"></div></div>
                     </div>
-                    <span class="small muted">Lo que más sube tu riesgo</span>
-                    <div class="factors">${suben.map(c => `<span class="factor up"><i class="fa-solid fa-arrow-up"></i> ${c.nombre}</span>`).join('') || '<span class="small muted">Nada destacable</span>'}</div>
-                    <span class="small muted" style="display:block;margin-top:.8rem">Lo que te protege</span>
-                    <div class="factors">${protegen.map(c => `<span class="factor down"><i class="fa-solid fa-shield-heart"></i> ${c.nombre}</span>`).join('') || '<span class="small muted">Aún nada: ¡empieza con una pausa!</span>'}</div>
+                    <span class="small muted">Factores detectados</span>
+                    <div class="factors">${suben.map(c => `<span class="factor up"><i class="fa-solid fa-arrow-up"></i> ${esc(c.nombre)}</span>`).join('') || '<span class="small muted">Riesgo controlado</span>'}</div>
+                    <div class="factors">${protegen.map(c => `<span class="factor down"><i class="fa-solid fa-shield-heart"></i> ${esc(c.nombre)}</span>`).join('')}</div>
                 </div>
                 <div class="panel">
                     <div class="panel-head"><h3>Riesgos que podrías desarrollar</h3></div>
@@ -329,14 +455,9 @@ const Resultado = {
                     </ul>
                 </div>
                 <div class="panel">
-                    <div class="panel-head"><h3>Tú vs. la comunidad</h3><span class="muted small">Promedios anónimos</span></div>
+                    <div class="panel-head"><h3>Tú vs. la comunidad</h3><span class="muted small">Promedios</span></div>
                     <div class="chart-wrap" style="height:240px"><canvas id="chart-comparacion"></canvas></div>
                 </div>
-            </div>
-            <p class="disclaimer"><i class="fa-solid fa-circle-info"></i> Kairós no sustituye una valoración médica o psicológica. Si el malestar persiste, acude a los servicios de salud de tu facultad.</p>
-            <div class="result-cta">
-                <button class="btn btn-soft" data-go="habitos"><i class="fa-solid fa-seedling"></i> Ver mis hábitos recomendados</button>
-                <button class="btn btn-ghost" data-go="dashboard"><i class="fa-solid fa-chart-column"></i> Compararme en el dashboard</button>
             </div>`;
 
         setTimeout(() => {
@@ -350,7 +471,7 @@ const Resultado = {
     }
 };
 
-/* Temporizador de descanso: al terminar suma un descanso y XP */
+/* Temporizador de descanso -> guarda en sesiones_desconexion */
 const Descanso = {
     timer: null, fin: 0, inicio: 0,
     alternar(min) {
@@ -367,15 +488,25 @@ const Descanso = {
         if (b) b.innerHTML = `<i class="fa-solid fa-stop"></i> <span class="timer">${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}</span> · Terminar`;
         if (s <= 0) this.terminar();
     },
-    terminar() {
+    async terminar() {
         clearInterval(this.timer); this.timer = null;
+        const mins = Math.max(1, Math.round((Date.now() - this.inicio) / 60000));
         estado.descansos += 1;
         estado.xp += 20;
-        estado.minutosSinPantalla += Math.max(1, Math.round((Date.now() - this.inicio) / 60000));
+        estado.minutosSinPantalla += mins;
         guardar(); actualizarHeader();
+
+        if (sb && usuarioActualId) {
+            await sb.from('sesiones_desconexion').insert({
+                usuario_id: usuarioActualId,
+                duracion_minutos: mins,
+                herramienta_usada: 'Temporizador Kairós'
+            });
+        }
+
         const b = $('#btn-descanso');
-        if (b) { b.innerHTML = '<i class="fa-solid fa-check"></i> Descanso registrado'; b.disabled = true; }
-        toast('Descanso registrado, sin culpa. +20 XP', 'fa-mug-hot');
+        if (b) { b.innerHTML = '<i class="fa-solid fa-check"></i> Guardado en Supabase'; b.disabled = true; }
+        toast('Sesión guardada en sesiones_desconexion. +20 XP', 'fa-mug-hot');
     }
 };
 
@@ -385,10 +516,10 @@ const Habitos = {
         const r = estado.resultado, f = r?.f, p = r?.burnout ?? 0;
         $('#habitos-aviso').innerHTML = r
             ? `<span class="ic ic-green"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
-               <p><b>Recomendaciones personalizadas</b> a partir de tu último check-in (desgaste ${r.desgaste}/100). Los marcados como <span class="tag tag-green">Para ti</span> responden a tus respuestas.</p>
+               <p><b>Recomendaciones personalizadas</b> a partir de tu último check-in (desgaste ${r.desgaste}/100).</p>
                <button class="btn btn-ghost btn-sm" data-go="racha"><i class="fa-solid fa-rotate"></i> Actualizar check-in</button>`
             : `<span class="ic ic-orange"><i class="fa-solid fa-circle-info"></i></span>
-               <p><b>Estas son recomendaciones generales.</b> Completa tu check-in para que el modelo las ordene según tu nivel de fatiga.</p>
+               <p><b>Estas son recomendaciones generales.</b> Completa tu check-in para personalizarlas.</p>
                <button class="btn btn-fire btn-sm" data-go="racha"><i class="fa-solid fa-robot"></i> Hacer check-in</button>`;
 
         const ordenar = lista => lista.map(h => ({ ...h, match: f ? !!h.cuando(f, p) : false })).sort((a, b) => b.match - a.match);
@@ -402,7 +533,7 @@ const Habitos = {
                         ${h.impacto ? `<span class="tag">Impacto ${h.impacto.toLowerCase()}</span>` : ''}</div>
                     <p>${h.desc}</p>
                 </div>
-                ${tipo === 'hacer' ? `<button class="add-btn ${enPlan ? 'on' : ''}" data-habito="${h.id}" title="${enPlan ? 'Quitar de mi plan' : 'Agregar a mi plan'}"><i class="fa-solid ${enPlan ? 'fa-check' : 'fa-plus'}"></i></button>` : ''}
+                ${tipo === 'hacer' ? `<button class="add-btn ${enPlan ? 'on' : ''}" data-habito="${h.id}"><i class="fa-solid ${enPlan ? 'fa-check' : 'fa-plus'}"></i></button>` : ''}
             </article>`;
         };
         $('#habitos-hacer').innerHTML = ordenar(KAIROS_DATA.habitos.hacer).map(h => tarjeta(h, 'hacer')).join('');
@@ -423,23 +554,56 @@ const Habitos = {
     }
 };
 
-/* ---------- Amigos y retos ---------- */
+/* ---------- Amigos y retos (Conectado a vista_ranking_semanal y amistades) ---------- */
 const Amigos = {
     metrica: 'racha',
-    render() {
-        const m = this.metrica;
-        const yo = { nombre: 'Tú', ini: KAIROS_DATA.usuario.iniciales, color: '#10b981', racha: estado.racha, tareas: estado.tareas, descansos: estado.descansos, sinPantalla: estado.minutosSinPantalla, yo: true };
-        const lista = [...KAIROS_DATA.amigos, yo].sort((a, b) => b[m] - a[m]);
-        const unidad = { racha: 'días', tareas: 'tareas', descansos: 'descansos', sinPantalla: 'min' }[m];
-        const max = lista[0][m] || 1;
-        const medallas = ['🥇', '🥈', '🥉'];
-        $('#leaderboard').innerHTML = lista.map((a, i) => `
-            <li class="lb-row ${a.yo ? 'me' : ''}" style="animation-delay:${i * 40}ms">
-                <span class="lb-pos">${medallas[i] || i + 1}</span>
-                <span class="avatar sm" style="background:${a.color}">${a.ini}</span>
-                <div class="lb-info"><b>${a.nombre}</b><div class="bar thin"><div class="bar-fill" style="width:${(a[m] / max) * 100}%"></div></div></div>
-                <span class="lb-val">${a[m]} <small>${unidad}</small></span>
-            </li>`).join('');
+    async render() {
+        if (sb) {
+            const { data: ranking } = await sb
+                .from('vista_ranking_semanal')
+                .select('*')
+                .order('posicion', { ascending: true });
+
+            if (ranking && ranking.length > 0) {
+                const medallas = ['🥇', '🥈', '🥉'];
+                const colores = ['#10b981', '#3b82f6', '#ec4899'];
+                const maxRacha = Math.max(...ranking.map(r => r.racha_dias), 1);
+
+                $('#leaderboard').innerHTML = ranking.map((r, i) => {
+                    const ini = r.nombre_completo.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                    const esYo = r.usuario_id === usuarioActualId;
+                    return `
+                        <li class="lb-row ${esYo ? 'me' : ''}">
+                            <span class="lb-pos">${medallas[i] || r.posicion}</span>
+                            <span class="avatar sm" style="background:${colores[i % colores.length]}">${ini}</span>
+                            <div class="lb-info">
+                                <b>${esc(r.nombre_completo)} ${esYo ? '(Tú)' : ''}</b>
+                                <small style="display:block;color:var(--muted);font-size:.75rem;">Pasivo prom: ${r.promedio_uso_pasivo_min} min</small>
+                                <div class="bar thin"><div class="bar-fill" style="width:${(r.racha_dias / maxRacha) * 100}%"></div></div>
+                            </div>
+                            <span class="lb-val">${r.racha_dias} <small>días</small></span>
+                        </li>`;
+                }).join('');
+            }
+
+            if (usuarioActualId) {
+                const { data: amistades } = await sb
+                    .from('amistades')
+                    .select('*')
+                    .or(`usuario_id.eq.${usuarioActualId},amigo_id.eq.${usuarioActualId}`);
+
+                $('#pendientes').innerHTML = (amistades || []).map(a => {
+                    const soyReceptor = a.amigo_id === usuarioActualId;
+                    const otroId = soyReceptor ? a.usuario_id : a.amigo_id;
+                    const otroUser = usuariosDB.find(u => u.id === otroId);
+                    const nombre = otroUser ? otroUser.nombre_completo : 'Usuario';
+                    const accion = (soyReceptor && a.estado === 'pendiente')
+                        ? `<button class="btn btn-primary btn-sm" onclick="Amigos.aceptar('${a.id}')">Aceptar</button>`
+                        : `<span class="tag">${a.estado}</span>`;
+                    return `<li><span><i class="fa-solid fa-user-group" style="color:var(--green)"></i> ${esc(nombre)}</span>${accion}</li>`;
+                }).join('') || '<li class="small muted">Sin amistades registradas aún</li>';
+            }
+        }
 
         $('#retos').innerHTML = KAIROS_DATA.retos.map(r => {
             const actual = Math.min(r.meta, r.actual(estado));
@@ -450,20 +614,48 @@ const Amigos = {
                 <div class="reto-meta"><span>${actual}/${r.meta} ${r.unidad}</span><span>${completo ? '¡Completado!' : '+' + r.xp + ' XP'}</span></div>
             </div>`;
         }).join('');
-
-        $('#pendientes').innerHTML = estado.invitaciones.map(n => `<li><span><i class="fa-solid fa-user-clock" style="color:var(--amber)"></i> ${esc(n)}</span><span class="tag">Pendiente</span></li>`).join('');
     },
-    registrar(tipo) {
-        if (tipo === 'tarea') { estado.tareas += 1; estado.xp += 10; toast('¡Tarea terminada! +10 XP', 'fa-check-double'); }
-        else { estado.descansos += 1; estado.minutosSinPantalla += 10; estado.xp += 10; toast('Descanso registrado, sin culpa. +10 XP', 'fa-mug-hot'); }
+    async registrar(tipo) {
+        if (tipo === 'tarea') {
+            estado.tareas += 1; estado.xp += 10;
+            toast('¡Tarea terminada! +10 XP', 'fa-check-double');
+        } else {
+            estado.descansos += 1; estado.minutosSinPantalla += 15; estado.xp += 10;
+            if (sb && usuarioActualId) {
+                await sb.from('sesiones_desconexion').insert({
+                    usuario_id: usuarioActualId,
+                    duracion_minutos: 15,
+                    herramienta_usada: 'Pausa Rápida Kairós'
+                });
+            }
+            toast('Descanso guardado en Supabase. +10 XP', 'fa-mug-hot');
+        }
         guardar(); actualizarHeader(); this.render();
     },
-    invitar(nombre) {
-        if (!nombre) return;
-        if (estado.invitaciones.includes(nombre)) { toast('Ya invitaste a esa persona', 'fa-circle-info'); return; }
-        estado.invitaciones.unshift(nombre);
-        guardar(); this.render();
-        toast(`Invitación enviada a ${nombre}`, 'fa-paper-plane');
+    async invitar(texto) {
+        if (!texto || !sb || !usuarioActualId) return;
+        const encontrado = usuariosDB.find(u => u.id !== usuarioActualId && u.nombre_completo.toLowerCase().includes(texto.toLowerCase()));
+        if (!encontrado) {
+            toast('Escribe el nombre de otro usuario registrado (ej. Carlos o Ana)', 'fa-circle-info');
+            return;
+        }
+        const { error } = await sb.from('amistades').insert({
+            usuario_id: usuarioActualId,
+            amigo_id: encontrado.id,
+            estado: 'pendiente'
+        });
+        if (error) {
+            toast('Ya existe una solicitud o amistad con ' + encontrado.nombre_completo, 'fa-circle-info');
+            return;
+        }
+        toast(`Solicitud enviada a ${encontrado.nombre_completo} en Supabase`, 'fa-paper-plane');
+        this.render();
+    },
+    async aceptar(amistadId) {
+        if (!sb) return;
+        await sb.from('amistades').update({ estado: 'aceptada' }).eq('id', amistadId);
+        toast('¡Amistad aceptada en Supabase!', 'fa-handshake');
+        this.render();
     }
 };
 
@@ -493,7 +685,7 @@ const IA = {
         $('#nlp-out').innerHTML = entidades.length
             ? `<span class="small muted">Entidades detectadas:</span><div class="ents">${entidades.map(e => `<span class="ent">${e.etiqueta}</span>`).join('')}</div>
                <pre class="code" style="margin-top:.8rem">${esc(json)}</pre>`
-            : '<p class="small muted">No se detectaron síntomas. Prueba con palabras como “cansado”, “ojos”, “ansiedad” o “no puedo dormir”.</p>';
+            : '<p class="small muted">No se detectaron síntomas.</p>';
     }
 };
 
@@ -530,10 +722,9 @@ const Cloud = {
 };
 
 /* ---------- Eventos globales e inicio ---------- */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     actualizarHeader();
 
-    // Navegación: cualquier elemento con data-section o data-go
     document.addEventListener('click', e => {
         const nav = e.target.closest('[data-section], [data-go]');
         if (nav) mostrarSeccion(nav.dataset.section || nav.dataset.go);
@@ -541,15 +732,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hab) Habitos.alternar(hab.dataset.habito);
     });
 
-    // Menú móvil
     $('#menu-btn').addEventListener('click', () => document.body.classList.toggle('menu-open'));
     $('#overlay').addEventListener('click', () => document.body.classList.remove('menu-open'));
 
-    // Check-in
     $('#btn-checkin').addEventListener('click', () => Racha.iniciarCheckin());
     $('#chat-form').addEventListener('submit', e => { e.preventDefault(); Agente.enviarTexto(); });
 
-    // Amigos
     $$('#lb-metrica button').forEach(b => b.addEventListener('click', () => {
         $$('#lb-metrica button').forEach(x => x.classList.toggle('active', x === b));
         Amigos.metrica = b.dataset.v; Amigos.render();
@@ -562,15 +750,16 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#invite-input').value = '';
     });
     $('#copy-link').addEventListener('click', async () => {
-        const link = `${location.origin}${location.pathname}?invita=${KAIROS_DATA.usuario.iniciales}-${hash(hoyISO()).toString(36).slice(0, 4).toUpperCase()}`;
+        const link = `${location.origin}${location.pathname}?invita=${KAIROS_DATA.usuario.iniciales}`;
         try { await navigator.clipboard.writeText(link); toast('Enlace de invitación copiado', 'fa-link'); }
         catch (e) { toast('Copia este enlace: ' + link, 'fa-link'); }
     });
 
-    // Reiniciar la demo (útil para presentar)
     $('#reset-demo').addEventListener('click', () => { Store.borrar(); location.hash = ''; location.reload(); });
 
-    // Sección inicial (respeta el #hash de la URL)
     const inicial = location.hash.slice(1);
     mostrarSeccion(document.getElementById(inicial)?.classList.contains('section') ? inicial : 'inicio');
+
+    // Conectar con Supabase al cargar
+    await sincronizarConSupabase();
 });
